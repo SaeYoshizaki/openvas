@@ -1,4 +1,4 @@
-name: OpenVAS test
+name: Openvas test
 
 on:
   push:
