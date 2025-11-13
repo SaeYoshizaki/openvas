@@ -9,13 +9,6 @@ CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 if CURRENT_DIR not in sys.path:
     sys.path.append(CURRENT_DIR)
 
-from openvas_utils import (  # noqa: E402
-    get_env,
-    find_config_id,
-    ensure_target,
-    ensure_task,
-)
-
 
 def main():
     gmp_host = get_env("GMP_HOST")
