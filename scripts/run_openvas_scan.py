@@ -1,67 +1,73 @@
 import os
-import sys
-
-from gvm.connections import TLSConnection
 from gvm.protocols.gmp import Gmp
-from gvm.errors import GvmError
-
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-if CURRENT_DIR not in sys.path:
-    sys.path.append(CURRENT_DIR)
+from gvm.connections import TLSConnection
 
 
-def main():
-    gmp_host = get_env("GMP_HOST")
-    gmp_port_str = get_env("GMP_PORT")
-    gmp_user = get_env("GMP_USER")
-    gmp_password = get_env("GMP_PASSWORD")
+def main() -> None:
+    """GitHub Actions から呼び出して OpenVAS (gvmd) にスキャンを依頼する最小構成スクリプト。"""
 
-    base_config_name = get_env("BASE_CONFIG_NAME")
-    target_hosts = get_env("TARGET_HOSTS")
-    task_name = get_env("TASK_NAME", required=False, default="GitHub CI DAST Scan")
+    # --- 環境変数の読み取り ---
+    gmp_host = os.environ["GMP_HOST"]
+    gmp_port = int(os.environ["GMP_PORT"])
+    gmp_user = os.environ["GMP_USER"]
+    gmp_password = os.environ["GMP_PASSWORD"]
 
-    try:
-        gmp_port = int(gmp_port_str)
-    except ValueError:
-        print(f"[エラー] GMP_PORT の値が不正です: {gmp_port_str}", file=sys.stderr)
-        sys.exit(1)
+    base_config_name = os.environ["BASE_CONFIG_NAME"]
+    target_hosts = os.environ["TARGET_HOSTS"]
+    task_name = os.environ.get("TASK_NAME", "GitHub CI DAST Scan")
 
-    print(f"[情報] gvmd へ接続します: {gmp_host}:{gmp_port}")
-
+    print(f"[INFO] gvmd へ TLS 接続します: {gmp_host}:{gmp_port}")
     connection = TLSConnection(hostname=gmp_host, port=gmp_port)
 
-    try:
-        with Gmp(connection=connection) as gmp:
-            gmp.authenticate(gmp_user, gmp_password)
-            print("[情報] gvmd への認証に成功しました。")
+    # --- gvmd への接続 & 認証 ---
+    with Gmp(connection=connection) as gmp:
+        print("[INFO] 認証中...")
+        gmp.authenticate(gmp_user, gmp_password)
+        print("[INFO] gvmd への認証に成功しました。")
 
-            config_id = find_config_id(gmp, base_config_name)
-            if not config_id:
-                print(
-                    f"[エラー] スキャン設定 '{base_config_name}' が見つからなかったため終了します。",
-                    file=sys.stderr,
-                )
-                sys.exit(1)
+        # --- スキャン設定 ID の取得 ---
+        print(f"[INFO] スキャン設定 '{base_config_name}' を検索します。")
+        configs_xml = gmp.get_configs()
+        base_config_id = None
 
-            target_name = f"CI target {target_hosts}"
-            target_id = ensure_target(gmp, target_name, hosts=target_hosts)
+        for cfg in configs_xml.xpath("*/config"):
+            name_node = cfg.find("name")
+            if name_node is not None and name_node.text == base_config_name:
+                base_config_id = cfg.get("id")
+                break
 
-            task_id = ensure_task(gmp, task_name, config_id=config_id, target_id=target_id)
+        if not base_config_id:
+            raise RuntimeError(f"scan config '{base_config_name}' が見つかりませんでした")
 
-            print(f"[情報] タスク '{task_name}' (ID: {task_id}) のスキャンを開始します。")
-            start_resp = gmp.start_task(task_id)
-            status = start_resp.get("status")
-            status_text = start_resp.get("status_text")
+        print(f"[INFO] 使用するスキャン設定 ID: {base_config_id}")
 
-            print(f"[情報] start_task の結果: status={status}, status_text={status_text}")
-            print("[情報] スキャン開始要求を gvmd に送信しました。詳細は OpenVAS/GSA 側で確認してください。")
+        # --- ターゲット作成 ---
+        print(f"[INFO] ターゲットを作成します: hosts={target_hosts}")
+        target_resp = gmp.create_target(
+            name=f"CI target {target_hosts}",
+            hosts=[target_hosts],
+            port_range="1-65535",
+        )
+        target_id = target_resp.get("id")
+        print(f"[INFO] ターゲット ID: {target_id}")
 
-    except GvmError as e:
-        print(f"[エラー] GVM 関連の例外が発生しました: {e}", file=sys.stderr)
-        sys.exit(1)
-    except Exception as e:
-        print(f"[エラー] 予期しない例外が発生しました: {e}", file=sys.stderr)
-        sys.exit(1)
+        # --- タスク作成 ---
+        print(f"[INFO] タスク '{task_name}' を作成します。")
+        task_resp = gmp.create_task(
+            name=task_name,
+            config_id=base_config_id,
+            target_id=target_id,
+        )
+        task_id = task_resp.get("id")
+        print(f"[INFO] タスク ID: {task_id}")
+
+        # --- スキャン開始 ---
+        print("[INFO] スキャンを開始します...")
+        start_resp = gmp.start_task(task_id)
+        status = start_resp.get("status")
+        status_text = start_resp.get("status_text")
+        print(f"[INFO] start_task の結果: status={status}, status_text={status_text}")
+        print("[INFO] スキャン開始要求を gvmd に送信しました。詳細は OpenVAS/GSA で確認してください。")
 
 
 if __name__ == "__main__":
