@@ -32,5 +32,46 @@ jobs:
 
       - name: Wait for server to be ready
         run: |
-          echo "Waiting for Next.js server..."
-          sleep 10
+          echo "サーバー起動を待機中"
+          for i in {1..30}; do
+            if curl -fsS http://localhost:3000 > /dev/null; then
+              echo "サーバー起動を確認しました。"
+              exit 0
+            fi
+            echo "起動待ち"
+            sleep 2
+          done
+          echo "サーバーが時間内に起動しませんでした"
+          exit 1
+
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v1
+        with:
+          authkey: ${{ secrets.TS_AUTHKEY }}
+
+      - name: Get tailscale IP
+        id: ts-ip
+        run: |
+          TS_IP=$(tailscale ip -4)
+          echo "Tailscale IP is: $TS_IP"
+          echo "ts_ip=$TS_IP" >> $GITHUB_OUTPUT
+
+      - name: Install python-gvm
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-pip
+          pip install python-gvm
+
+      - name: Run OpenVAS scan script
+        run: |
+          python3 scripts/run_openvas_scan.py
+        env:
+          GMP_HOST: ${{ secrets.GMP_HOST }}
+          GMP_PORT: "9390"
+          GMP_USER: ${{ secrets.GMP_USER }}
+          GMP_PASSWORD: ${{ secrets.GMP_PASSWORD }}
+          BASE_CONFIG_NAME: "Full and fast"
+          TARGET_HOSTS: ${{ steps.ts-ip.outputs.ts_ip }}
+          TASK_NAME: "GitHub CI DAST Scan"
+
+
