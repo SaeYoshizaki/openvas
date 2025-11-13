@@ -3,7 +3,7 @@ name: OpenVAS test
 on:
   push:
     branches:
-      - security/openvas-test
+      - main
 
 jobs:
   dev-server:
