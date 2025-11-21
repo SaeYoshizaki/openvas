@@ -1,0 +1,88 @@
+name: OpenVAS Scan
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-and-scan:
+    runs-on: self-hosted
+
+    env:
+      GMP_USER: ${{ secrets.GMP_USER }}
+      GMP_PASSWORD: ${{ secrets.GMP_PASSWORD }}
+      SCAN_TARGETS: "127.0.0.1"
+      GMP_SOCKET_PATH: "/run/gvmd/gvmd.sock"
+      REPORT_DIR: "openvas_reports"
+      POLL_INTERVAL: "10"
+      TASK_NAME_PREFIX: "GitHub Actions Scan"
+      SCAN_CONFIG_ID: ${{ secrets.SCAN_CONFIG_ID }}
+      SCANNER_ID: ${{ secrets.SCANNER_ID }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install Node dependencies
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Build Next.js app
+        run: npm run build
+
+      - name: Start Next.js app in background
+        run: |
+          npm run start -- --hostname 0.0.0.0 --port 3000 &
+          echo $! > next.pid
+
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:3000 > /dev/null; then
+              echo "Next.js app is up!"
+              break
+            fi
+            echo "Waiting for Next.js to start..."
+            sleep 2
+          done
+
+      - name: Ensure GVM is running (check gvmd socket)
+        run: |
+          if [ ! -S "$GMP_SOCKET_PATH" ]; then
+            echo "ERROR: GVM socket $GMP_SOCKET_PATH not found."
+            exit 1
+          fi
+          echo "gvmd socket is ready at $GMP_SOCKET_PATH"
+
+      - name: Install OpenVAS Python deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-gvm python3-lxml
+
+      - name: Run OpenVAS scan
+        run: |
+          python3 scripts/run_openvas_scan.py
+
+      - name: Stop Next.js app
+        if: always()
+        run: |
+          if [ -f next.pid ]; then
+            kill "$(cat next.pid)" || true
+          fi
+
+      - name: Upload OpenVAS report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openvas-report
+          path: openvas_reports/
