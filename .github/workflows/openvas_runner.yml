@@ -71,7 +71,8 @@ jobs:
       - name: Install OpenVAS Python deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-gvm python3-lxml
+          sudo DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC \
+            apt-get install -y tzdata python3-gvm python3-lxml
 
       - name: Run OpenVAS scan
         run: |
