@@ -33,6 +33,7 @@ jobs:
 
       - name: Install Node dependencies
         run: |
+          cd webapp
           if [ -f package-lock.json ]; then
             npm ci
           else
