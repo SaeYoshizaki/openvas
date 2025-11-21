@@ -37,9 +37,11 @@ def main() -> None:
 
         port_lists = gmp.get_port_lists(filter_string='name="OpenVAS Default"')
         port_list_ids = port_lists.xpath("port_list/@id")
+
         if not port_list_ids:
-            port_list = gmp.get_port_list()
-            ort_list_ids = port_lists.xpath("port_list/@id")
+            raise ValueError("No port list found")
+
+        port_list_id = port_list_ids[0]
 
         if not port_list_ids:
             print("GVM上にポートリストがありません")
