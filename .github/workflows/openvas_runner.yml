@@ -68,12 +68,6 @@ jobs:
           fi
           echo "gvmd socket is ready at $GMP_SOCKET_PATH"
 
-      - name: Install OpenVAS Python deps
-        run: |
-          sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC \
-            apt-get install -y tzdata python3-gvm python3-lxml
-
       - name: Run OpenVAS scan
         run: |
           python3 scripts/run_openvas_scan.py
