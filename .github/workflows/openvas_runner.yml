@@ -40,12 +40,16 @@ jobs:
           fi
 
       - name: Build Next.js app
-        run: npm run build
+        run: |
+          cd webapp
+          npm install
+          npm run build
 
       - name: Start Next.js app in background
         run: |
+          cd webapp
           npm run start -- --hostname 0.0.0.0 --port 3000 &
-          echo $! > next.pid
+          echo $! > ../next.pid
 
           for i in {1..30}; do
             if curl -fsS http://127.0.0.1:3000 > /dev/null; then
